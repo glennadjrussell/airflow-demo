@@ -1,3 +1,5 @@
 airflow.db
 logs/
 *.pid
+**/__pycache__
+
