@@ -1,16 +1,16 @@
 from airflow import DAG
 from airflow.contrib.operators.gcs_to_bq import GoogleCloudStorageToBigQueryOperator
+from airflow.providers.google.cloud.operators.dataflow import DataflowStartFlexTemplateOperator
 from airflow.utils.dates import days_ago
 from airflow.utils.trigger_rule import TriggerRule
 
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import BranchPythonOperator, PythonOperator, ShortCircuitOperator
-from airflow.providers.google.cloud.operators.dataflow import DataflowTemplatedJobStartOperator
 
 from google.cloud import storage
 import os
-
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/jhanrattyqarik.com/apex/beam-dlp-pipeline/qbank_keys.json"
+
 client = storage.Client()
 #
 # Setup our DAG
@@ -23,6 +23,8 @@ APEX_ERRORED_DIR = 'errored/'
 DATASET_NAME = "testdataset"
 TABLE_NAME = "CorrespondentOffice"
 PII_PRESENT = True
+
+DLP_OUTPUT = f"dlp_output/{TABLE_NAME}/"
 
 
 def list_gcs_files_by_regex(pattern: str):
@@ -54,6 +56,8 @@ def move_files(**context):
     source_bucket = client.get_bucket(APEX_SOURCE_BUCKET)
     destination_bucket = client.get_bucket(APEX_SOURCE_BUCKET)
 
+    print(file_list)
+
     for file in file_list:
         source_blob = source_bucket.blob(file)
 
@@ -69,29 +73,37 @@ def delete_dlp_files(**context):
     dlp_input = bucket.list_blobs(prefix="dlp_input")
     for blob in dlp_input:
         print(blob.name)
-        # blob.delete()
+        blob.delete()
 
     dlp_output = bucket.list_blobs(prefix="dlp_output")
     for blob in dlp_output:
         print(blob.name)
-        # blob.delete()
+        blob.delete()
 
 def perform_redact(**context):
     files = []
     redact_success = []
 
-    op = DataflowTemplatedJobStartOperator(
+    ### This task also writes the output to BigQuery and Google Cloud Storage
+
+    op = DataflowStartFlexTemplateOperator(
         task_id="DataflowRedactPii",
-        job_name="apex_redact",
-        template=f"gs://{APEX_SOURCE_BUCKET}/dataflow_dlp/dlp_pipeline_template",
-        parameters={
-            # "input": f"gs://{APEX_SOURCE_BUCKET}/dataflow_dlp/corr_off_limited.avro",
-            "input": f"gs://{APEX_SOURCE_BUCKET}/dlp_input/*",
-            "output": f"gs://{APEX_SOURCE_BUCKET}/dlp_output/correspondent_office_all/",
-            "wrapped_key": "CiQAQQxzYd47647knauYHAwwcbeNEp3vG34FIlGoXFmyVDZfGWYSSQC46Yg1OMXdleNBs7ZcLFY8lkG62to+AezbK55wghV7Dtufe82ETiL8HTKxivMc2T9JeNUB+jZ4CIXDU5KKYpRFBWe2L5Okx0s=",
-            "key_name": "projects/qbank-266411/locations/global/keyRings/my-kms-key-ring-qbank/cryptoKeys/qbank-kms-key",
-            "redact_fields": "Address1,City"
-        },
+        project_id=APEX_PROJECT,
+        do_xcom_push=True,
+        location="us-central1",
+        body={
+            "launchParameter": {
+                "containerSpecGcsPath": "gs://qbank-test-bucket/dataflow_dlp/template_metadata",
+                "jobName": "apexredact3",
+                "parameters": {
+                    "input": f"gs://{APEX_SOURCE_BUCKET}/dlp_input/*",
+                    "output": f"gs://{APEX_SOURCE_BUCKET}/{DLP_OUTPUT}",
+                    "redact_fields": "Address1",
+                    "setup_file": "/dataflow/template/setup.py",
+                    "table_name": TABLE_NAME
+                },
+            }
+        }
     )
     print(f"Redact complete for file {str(files)}")
     # redact_success.append(file_name)
@@ -105,14 +117,18 @@ def perform_redact(**context):
 def write_to_bq_redacted(**context):
     file_list = []
 
-    for blob in client.list_blobs(APEX_SOURCE_BUCKET, prefix="dlp_output/correspondent_office_all/"):
-        file_list.append((blob.name))
+    for blob in client.list_blobs(APEX_SOURCE_BUCKET, prefix="dlp_output/"):
+        file_list.append(blob.name)
+
+
+    print(file_list)
 
     op = GoogleCloudStorageToBigQueryOperator(
         task_id="RedactedAvroToBigQuery",
+        bigquery_conn_id='bigquery',
         source_objects=file_list,
         bucket=APEX_SOURCE_BUCKET,
-        destination_project_dataset_table=f"{APEX_PROJECT}.{DATASET_NAME}.jen_test_redact_17",
+        destination_project_dataset_table=f"{APEX_PROJECT}.{DATASET_NAME}.jen_test_redact",
         create_disposition='CREATE_IF_NEEDED',
         write_disposition='WRITE_APPEND',
         source_format='AVRO',
@@ -150,29 +166,29 @@ def create_dag(dag_id, schedule, filepattern, default_args):
               default_args=default_args)
 
     with dag:
-        list_gcs_files = PythonOperator(
-            task_id='ListGCSFiles',
-            pattern=filepattern,
-            provide_context=True,
-            python_callable=ingest_file)
-
-        check_files = ShortCircuitOperator(
-            task_id='CheckFileList',
-            provide_context=True,
-            python_callable=check_file_list)
-
-        archive = DummyOperator(
-            task_id='Archive')
-
-        check_redact = BranchPythonOperator(
-            task_id="RedactCondition",
-            python_callable=check_redact_condition,
-            provide_context=True)
-
-        move_files_to_be_redacted = PythonOperator(
-            task_id='MovePiiFiles',
-            provide_context=True,
-            python_callable=move_files)
+        # list_gcs_files = PythonOperator(
+        #     task_id='ListGCSFiles',
+        #     pattern=filepattern,
+        #     provide_context=True,
+        #     python_callable=ingest_file)
+        #
+        # check_files = ShortCircuitOperator(
+        #     task_id='CheckFileList',
+        #     provide_context=True,
+        #     python_callable=check_file_list)
+        #
+        # archive = DummyOperator(
+        #     task_id='Archive')
+        #
+        # check_redact = BranchPythonOperator(
+        #     task_id="RedactCondition",
+        #     python_callable=check_redact_condition,
+        #     provide_context=True)
+        #
+        # # move_files_to_be_redacted = PythonOperator(
+        # #     task_id='MovePiiFiles',
+        # #     provide_context=True,
+        # #     python_callable=move_files)
 
         redact = PythonOperator(
             task_id='DataflowRedactPii',
@@ -181,38 +197,42 @@ def create_dag(dag_id, schedule, filepattern, default_args):
             python_callable=perform_redact
         )
 
-        load_bigquery_redacted = PythonOperator(
-            task_id='LoadBigQueryRedacted',
-            provide_context=True,
-            trigger_rule=TriggerRule.ONE_SUCCESS,
-            python_callable=write_to_bq_redacted)
+        # load_bigquery_redacted = PythonOperator(
+        #     task_id='LoadBigQueryRedacted',
+        #     provide_context=True,
+        #     trigger_rule=TriggerRule.ONE_SUCCESS,
+        #     python_callable=write_to_bq_redacted)
+        #
+        # load_bigquery_non_redacted = PythonOperator(
+        #     task_id='LoadBigQueryNonRedacted',
+        #     provide_context=True,
+        #     trigger_rule=TriggerRule.ONE_SUCCESS,
+        #     python_callable=write_to_bq_non_redacted)
+        #
+        # delete_files = PythonOperator(
+        #     task_id='DeleteRedactedFiles',
+        #     provide_context=True,
+        #     python_callable=delete_dlp_files)
+        #
+        # end = DummyOperator(
+        #     task_id='End')
 
-        load_bigquery_non_redacted = PythonOperator(
-            task_id='LoadBigQueryNonRedacted',
-            provide_context=True,
-            trigger_rule=TriggerRule.ONE_SUCCESS,
-            python_callable=write_to_bq_non_redacted)
+        # list_gcs_files >> check_files >> archive >> check_redact
+        # # redact
+        # check_redact >> move_files_to_be_redacted >> \
 
-        delete_files = PythonOperator(
-            task_id='DeleteRedactedFiles',
-            provide_context=True,
-            python_callable=delete_dlp_files)
+        redact
 
-        end = DummyOperator(
-            task_id='End')
-
-        list_gcs_files >> check_files >> archive >> check_redact
-        # redact
-        check_redact >> move_files_to_be_redacted >> redact >> load_bigquery_redacted >> delete_files >> end
+        # >> delete_files >> end
         # do not redact
-        check_redact >> load_bigquery_non_redacted >> end
+        # check_redact >> load_bigquery_non_redacted >> end
 
     return dag
 
 
 # Setup DAG
 dag_name = TABLE_NAME.lower()
-dag_id = f"ingest_table_{dag_name}"
+dag_id = f"ingest_table_jen_test_{dag_name}"
 schedule = '@daily'
 
 default_args = {'owner': 'apex',
