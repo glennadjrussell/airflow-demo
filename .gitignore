@@ -2,4 +2,7 @@ airflow.db
 logs/
 *.pid
 **/__pycache__
-
+venv/
+.idea/
+.pyenv/
+.DS_Store
