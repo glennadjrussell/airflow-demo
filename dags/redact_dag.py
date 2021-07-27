@@ -17,7 +17,7 @@ client = storage.Client()
 #
 APEX_PROJECT = 'qbank-266411'
 APEX_SOURCE_BUCKET = "qbank-test-bucket"
-APEX_ROOT_DIR = 'import/'
+APEX_ROOT_DIR = 'import_testing_airflow/'
 APEX_PROCESSED_DIR = 'processed/'
 APEX_ERRORED_DIR = 'errored/'
 DATASET_NAME = "testdataset"
@@ -35,12 +35,15 @@ def list_gcs_files_by_regex(pattern: str):
         print(f"Comparing {pattern} with file {blob.name}")
         if pattern in blob.name.lower():
             result.append(blob.name)
+    print(result)
 
     return result
 
 def check_file_list(**context):
     ti = context["ti"]
     file_list = ti.xcom_pull(task_ids="ListGCSFiles")
+
+    print(file_list)
 
     result = True
 
@@ -57,14 +60,16 @@ def move_files(**context):
     source_bucket = client.get_bucket(APEX_SOURCE_BUCKET)
     destination_bucket = client.get_bucket(APEX_SOURCE_BUCKET)
 
+    print(file_list)
+
     for file in file_list:
         source_blob = source_bucket.blob(file)
 
         old_dir = file.split("/")[0]
         new_f = file.replace(old_dir, f"dlp_input/{TABLE_NAME}")
 
-        source_bucket.copy_blob(
-            source_blob, destination_bucket, new_f)
+        # source_bucket.copy_blob(
+        #     source_blob, destination_bucket, new_f)
 
         # keep originals. If redact is successful, we will overwrite
         # source_blob.delete()
@@ -91,11 +96,15 @@ def delete_dlp_files(**context):
         # blob.delete()
     # bucket.delete_blobs(output_files)
 
+    print("input files")
+    print(input_files)
+    print("output files")
+    print(output_files)
+
 def perform_redact(**context):
-    job_uuid = uuid.uuid4().hex
     input = f"gs://{APEX_SOURCE_BUCKET}/dlp_input/{TABLE_NAME}/*"
-    output = f"gs://{APEX_SOURCE_BUCKET}/dlp_output/{TABLE_NAME}/{TABLE_NAME.lower()}_{job_uuid}_"
-    jobname = f"apexredact{TABLE_NAME.lower()}{job_uuid}"
+    output = f"gs://{APEX_SOURCE_BUCKET}/dlp_output/{TABLE_NAME}/{TABLE_NAME.lower()}{uuid.uuid4()}"
+    jobname = f"apexredact{TABLE_NAME.lower()}{uuid.uuid4().hex}"
 
     print(f"Input files location: {input}")
     print(f"Output files location: {output}")
@@ -244,6 +253,7 @@ def create_dag(dag_id, schedule, filepattern, default_args):
         list_gcs_files >> check_files >> archive >> check_redact
         # redact
         check_redact >> move_files_to_be_redacted >> redact >> load_bigquery_redacted >> delete_files >> end
+        # TODO move redacted file back into the import_testing_airflow directory
         # do not redact
         check_redact >> load_bigquery_non_redacted >> end
 
@@ -252,7 +262,7 @@ def create_dag(dag_id, schedule, filepattern, default_args):
 
 # Setup DAG
 dag_name = TABLE_NAME.lower()
-dag_id = f"ingest_table_{dag_name}"
+dag_id = f"ingest_table_update_{dag_name}"
 schedule = '@daily'
 
 default_args = {'owner': 'apex',
