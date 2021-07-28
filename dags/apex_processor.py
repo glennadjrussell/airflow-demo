@@ -24,7 +24,6 @@ DATASET_NAME = "testdataset"
 TABLE_NAME = "AccountMaster"
 REDACT_FIELDS = "Address1,Address2"
 PII_PRESENT = True
-BATCH_SIZE = 250
 
 FLEX_TEMPLATE_PATH = "gs://qbank-test-bucket/dataflow_dlp/template_metadata"
 
@@ -106,8 +105,6 @@ def perform_redact(**context):
         "output": output,
         "redact_fields": REDACT_FIELDS,
         "setup_file": "/dataflow/template/setup.py",
-        "table_name": TABLE_NAME,
-        "batch_size": BATCH_SIZE
     }
 
     dataflow = build('dataflow', 'v1b3')
