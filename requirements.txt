@@ -22,7 +22,7 @@ dill==0.3.3
 dnspython==1.16.0
 docutils==0.15.2
 email-validator==1.1.2
-Flask==1.1.2
+Flask==2.2.5
 Flask-Admin==1.5.4
 Flask-AppBuilder==2.3.4
 Flask-Babel==1.0.0
