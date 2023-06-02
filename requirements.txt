@@ -16,7 +16,7 @@ colorama==0.4.4
 colorlog==4.0.2
 configparser==3.5.3
 croniter==0.3.36
-cryptography==3.2.1
+cryptography==41.0.0
 defusedxml==0.6.0
 dill==0.3.3
 dnspython==1.16.0
