@@ -16,13 +16,13 @@ colorama==0.4.4
 colorlog==4.0.2
 configparser==3.5.3
 croniter==0.3.36
-cryptography==3.2.1
+cryptography==41.0.3
 defusedxml==0.6.0
 dill==0.3.3
 dnspython==1.16.0
 docutils==0.15.2
 email-validator==1.1.2
-Flask==1.1.2
+Flask==2.2.5
 Flask-Admin==1.5.4
 Flask-AppBuilder==2.3.4
 Flask-Babel==1.0.0
@@ -83,7 +83,7 @@ importlib-metadata==2.1.1
 importlib-resources==1.5.0
 iso8601==0.1.13
 itsdangerous==1.1.0
-Jinja2==2.11.2
+Jinja2==2.11.3
 json-merge-patch==0.2
 jsonschema==3.2.0
 lazy-object-proxy==1.4.3
@@ -145,7 +145,7 @@ tzlocal==1.5.1
 unicodecsv==0.14.1
 uritemplate==3.0.1
 urllib3==1.25.11
-Werkzeug==0.16.1
+Werkzeug==2.2.3
 WTForms==2.3.3
 zipp==3.4.0
 zope.deprecation==4.4.0
