@@ -16,7 +16,7 @@ colorama==0.4.4
 colorlog==4.0.2
 configparser==3.5.3
 croniter==0.3.36
-cryptography==3.2.1
+cryptography==41.0.5
 defusedxml==0.6.0
 dill==0.3.3
 dnspython==1.16.0
@@ -145,7 +145,7 @@ tzlocal==1.5.1
 unicodecsv==0.14.1
 uritemplate==3.0.1
 urllib3==1.25.11
-Werkzeug==0.16.1
+Werkzeug==3.0.1
 WTForms==2.3.3
 zipp==3.4.0
 zope.deprecation==4.4.0
